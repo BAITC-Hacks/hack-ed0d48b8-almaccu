@@ -1,49 +1,39 @@
-"""Первая выгрузка каталога и разведка структуры API.
-
-Запуск:  python -m scripts.sync_catalog --pages 3 --details 10
-Сохраняет сырые ответы в data/raw/ и печатает, какие поля реально приходят.
-"""
 from __future__ import annotations
 
-import argparse
-import json
-from collections import Counter
+import os
 from pathlib import Path
 
-# from services.catalog.ekt_client import EktClient
-
-RAW_DIR = Path(__file__).resolve().parent.parent / "data" / "raw"
+ROOT = Path(__file__).resolve().parent
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--pages", type=int, default=2, help="сколько страниц списка выгрузить")
-    parser.add_argument("--details", type=int, default=5, help="сколько детальных карточек выгрузить")
-    args = parser.parse_args()
-
-    RAW_DIR.mkdir(parents=True, exist_ok=True)
-    client = EktClient()
-
-    products = list(client.iter_products(max_pages=args.pages))
-    (RAW_DIR / "products.json").write_text(
-        json.dumps(products, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    print(f"Товаров в списке: {len(products)}")
-    list_fields = Counter(k for p in products if isinstance(p, dict) for k in p)
-    print("Поля в списке:", dict(list_fields.most_common()))
-
-    details = []
-    for p in products[: args.details]:
-        pid = p.get("id") if isinstance(p, dict) else None
-        if pid is not None:
-            details.append(client.get_product_detail(pid))
-    (RAW_DIR / "details.json").write_text(
-        json.dumps(details, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    detail_fields = Counter(k for d in details if isinstance(d, dict) for k in d)
-    print(f"Детальных карточек: {len(details)}")
-    print("Поля в карточке:", dict(detail_fields.most_common()))
+def _load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
-if __name__ == "__main__":
-    main()
+_load_env_file(ROOT / ".env")
+
+HOST = os.getenv("HOST", "127.0.0.1")
+PORT = int(os.getenv("PORT", "8000"))
+
+CATALOG_PATH = ROOT / os.getenv("CATALOG_PATH", "data/catalog.json")
+TERMS_PATH = ROOT / "data" / "purchase_terms.json"
+
+EKT_API_BASE = os.getenv("EKT_API_BASE", "https://ekt.kz/api")
+EKT_API_USER = os.getenv("EKT_API_USER", "")
+EKT_API_PASSWORD = os.getenv("EKT_API_PASSWORD", "")
+
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+LLM_MODEL = os.getenv("LLM_MODEL", "claude-haiku-4-5-20251001")
+
+# Ограничения
+MAX_MESSAGE_CHARS = 1000
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+MAX_SPEC_ROWS = 200
+CONFIRM_TTL_SECONDS = 10 * 60
